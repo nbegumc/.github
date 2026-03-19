@@ -1,0 +1,67 @@
+name: Code Quality
+
+on:
+  workflow_call:
+
+jobs:
+
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Setup Python
+        run: |
+          PY_VERSION=$(uv pyproject get python)
+          if [ -z "$PY_VERSION" ]; then
+            PY_VERSION=3.11
+          fi
+          uv python install $PY_VERSION
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Cache uv virtualenvs
+        uses: actions/cache@v4
+        with:
+          path: ~/.uv/envs
+          key: ${{ runner.os }}-uv-envs-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-envs-
+
+      - name: Sync dependencies
+        id: sync-dependencies
+        run: |
+          if [ -f pyproject.toml ]; then
+            uv sync --all-extras --dev
+          elif [ -f requirements.txt ]; then
+            uv pip install -r requirements.txt
+          fi
+
+      - name: Install tooling
+        run: uv pip install pre-commit pytest
+
+      - name: Check lockfile
+        if: ${{ steps.sync-dependencies.outcome == 'success' }}
+        run: uv lock --check
+
+      - name: Run pre-commit
+        run: uv run pre-commit run --all-files
+
+      - name: Run tests
+        run: |
+          if [ -d tests ]; then
+            uv run pytest
+          else
+            echo "No tests folder found"
