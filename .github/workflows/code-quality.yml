@@ -69,3 +69,4 @@ jobs:
             uv run pytest
           else
             echo "No tests folder found"
+          fi
